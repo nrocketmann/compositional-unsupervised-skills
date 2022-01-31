@@ -14,6 +14,7 @@ import reverb
 import sonnet as snt
 import tensorflow as tf
 import trfl
+import wandb
 
 class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
   """DQN learner.
@@ -43,6 +44,7 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
       checkpoint: bool = True,
       save_directory: str = '~/acme',
       max_gradient_norm: Optional[float] = None,
+      tflogs: str = None
   ):
     """Initializes the learner.
 
@@ -65,6 +67,7 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
       save_directory: string indicating where the learner should save
         checkpoints and snapshots.
       max_gradient_norm: used for gradient clipping.
+      tflogs: a directory for tf summary logging for wandb
     """
     self.beta = beta
 
@@ -134,6 +137,11 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
     else:
       self._snapshotter = None
 
+    if tflogs:
+      self.tf_summary_writer = tf.summary.create_file_writer(tflogs)
+    else:
+      self.tf_summary_writer = None
+
     # Do not record timestamps until after the first learning step is done.
     # This is to avoid including the time it takes for actors to come online and
     # fill the replay buffer.
@@ -194,6 +202,17 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
       # Reweight.
       loss *= tf.cast(importance_weights, loss.dtype)  # [B]
       loss = tf.reduce_mean(loss, axis=[0])  # []
+
+      if self.tf_summary_writer is not None:
+        with self.tf_summary_writer.as_default():
+          tf.summary.scalar('loss_Q', loss)
+          tf.summary.scalar('loss_q', q_loss)
+          tf.summary.scalar('loss_r', r_loss)
+          tf.summary.scalar('loss_feat', feat_loss)
+          tf.summary.scalar('intrinsic_reward', tf.reduce_mean(intrinsic_reward))
+          tf.summary.scalar('mean_qval', tf.reduce_mean(q_t_value))
+        self.tf_summary_writer.flush()
+        wandb.tensorflow.log(tf.summary.merge_all())
 
     qgradients = tape.gradient(q_loss, self._qnetwork.trainable_variables)
     rgradients = tape.gradient(r_loss, self._rnetwork.trainable_variables)

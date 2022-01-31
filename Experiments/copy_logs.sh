@@ -1,0 +1,3 @@
+rsync -r nameer@deeplearn9.eecs.umich.edu:empowerment/IntrinsicRewards/checkpoints/* /users/nameerhirschkind/Programming/RL_Research/Pretraining/empowerment/IntrinsicRewards/checkpoints
+rsync -r nameer@deeplearn9.eecs.umich.edu:empowerment/IntrinsicRewards/logdir/* /users/nameerhirschkind/Programming/RL_Research/Pretraining/empowerment/IntrinsicRewards/logdir
+rsync -r  nameer@deeplearn9.eecs.umich.edu:empowerment/IntrinsicRewards/metadata/* /users/nameerhirschkind/Programming/RL_Research/Pretraining/empowerment/IntrinsicRewards/metadata

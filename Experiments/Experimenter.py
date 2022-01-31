@@ -3,31 +3,38 @@
  - We want the results of that run to be saved to Wandb
  - We want a video of what went down, also
 """
-from MohammadDQN import gridworld_utils as empowerment
+from IntrinsicRewards.MohammadDQN import gridworld_utils as empowerment
 from typing import Optional
 import copy
 import os
+from acme.utils import loggers
+import json
+import IntrinsicRewards.Experiments.helpers as helpers
+import wandb
 
-#TODO: Add in logging to logdir
-#TODO: Add in checkpointing to checkpoints
-#TODO: Add in saving metadata to metadata
+
 #TODO: Add in observers
-#TODO: Integrate Wandb
 
 
 """We will use the experimenter to run any experiment function
 It should simply take in "args", an experiment function, and run all the experiments while doing saving as necessary"""
 class Experimenter:
     def __init__(self,
+                 name, #a string saying what name this experiment has
                  experiment_function,
                  args: dict, #arguments required for the experiment function, including "other_arguments"
+                 wandb_project: str = "rl_skills",
+                 wandb_username: str = "nrocketmann"
                  ):
         self.experiment_function = experiment_function
+        self.name = name
 
         #things we always want to have:
         args['checkpoint'] = True
 
         self.args = args
+        self.wandb_project = wandb_project
+        self.wandb_username = wandb_username
 
     #This function actually runs all the experiments in "args"
     #It does so recursively over all Arglist's
@@ -44,17 +51,47 @@ class Experimenter:
         # now after doing all that recursing... we can actually run stuff
         if leaf_node:
             print("Running experiment with args: " + str(args))
+
+            #saving logging, checkpointing, and metadata
             modelnum = self.get_modelnum()
+
+            #logging
+            args['logger'] = loggers.CSVLogger('logdir/' + self.name + str(modelnum))
+
+            #checkpointing
+            args['checkpoint'] = True
+            checkpoint_path = 'checkpoints/' + self.name + str(modelnum)
+            os.mkdir(checkpoint_path)
+            args['checkpoint_subpath'] = checkpoint_path
+
+            #metadata
+            writeable_args = {"name":self.name, "modelnum":modelnum}
+            for k,v in args.items():
+                if helpers.is_jsonable(k) and helpers.is_jsonable(v):
+                    writeable_args[k] = v
+
+            json.dump(writeable_args, open('metadata/' + self.name + str(modelnum) + '.json','w'))
+
+            #wandb logging
+            tf_logdir = 'tflogs/' + self.name + str(modelnum)
+            run = wandb.init(project=self.wandb_project,entity=self.wandb_username, reinit=True)
+            wandb.run.name = self.name + str(modelnum)
+            wandb.config = writeable_args
+            args['tflogs'] = tf_logdir
             self.experiment_function(**args)
+            run.finish()
+
 
     #The public function that is called to run experiments
     def run_experiments(self):
         print("Running experiments!")
         self._run_experiments(self.args)
 
+    #Each model with the same name is assigned a number one greater than the last one
+    #Logs are saved as [MODELNAME][NUMBER].csv in logdir
     def get_modelnum(self):
-        existing_logs = os.listdir("logdir")
-        return 0
+        existing_logs = list(filter(lambda x: x.startswith(self.name), os.listdir("logdir/")))
+        return len(existing_logs)
 
 
 """Wrapper around a list for recursive parameter searches"""
@@ -94,19 +131,3 @@ def gridworld_empowerment_experiment(
         raise TypeError("Either num_episodes or num_steps must not be None")
 
     return
-
-
-ARGS = {
-    #required args
-    "envname": 'MiniGrid-Empty-8x8-v0',
-    "model_type": 'simple',
-    'num_episodes': 25,
-
-    #extra args
-    'beta': 0.5,
-    'min_replay_size':10,
-    'batch_size':32
-
-}
-exp = Experimenter(gridworld_empowerment_experiment, ARGS)
-exp.run_experiments()

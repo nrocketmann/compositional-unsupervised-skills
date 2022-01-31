@@ -53,6 +53,7 @@ class DQNEmpowerment(agent.Agent):
       checkpoint_subpath: str = '~/acme',
       policy_network: Optional[snt.Module] = None,
       max_gradient_norm: Optional[float] = None,
+      tflogs: str = None
   ):
     """Initialize the agent.
 
@@ -85,6 +86,7 @@ class DQNEmpowerment(agent.Agent):
         Otherwise, an epsilon greedy policy using the online Q network will be
         created. Policy network is used in the actor to sample actions.
       max_gradient_norm: used for gradient clipping.
+      tflogs: a directory to write tensorboard logs for wandb
     """
 
     replay_table = reverb.Table(
@@ -161,7 +163,8 @@ class DQNEmpowerment(agent.Agent):
         max_gradient_norm=max_gradient_norm,
         logger=logger,
         checkpoint=checkpoint,
-        save_directory=checkpoint_subpath)
+        save_directory=checkpoint_subpath,
+        tflogs=tflogs)
 
     if checkpoint:
       self._checkpointer = tf2_savers.Checkpointer(
