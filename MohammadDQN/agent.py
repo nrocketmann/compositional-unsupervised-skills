@@ -146,6 +146,8 @@ class DQNEmpowerment(agent.Agent):
     # Create the actor which defines how we take actions.
     actor = actors.FeedForwardActor(policy_network, adder)
 
+    self.eval_actor = actors.FeedForwardActor(policy_network, None)
+
     # The learner updates the parameters (and initializes them).
     learner = learning.DQNEmpowermentLearner(
         Qnetwork=Qnetwork,

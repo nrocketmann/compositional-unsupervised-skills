@@ -1,16 +1,13 @@
-from absl.testing import absltest
 import tensorflow as tf
 import acme
 from acme import specs
 from IntrinsicRewards import MohammadDQN as dqn
-from acme.testing import fakes
 from acme import wrappers
 from IntrinsicRewards.MohammadDQN.EnvWrappers import SinglePrecisionFloatWrapper
-from absl import flags
-import bsuite
 import dm_env
 import gym
-from absl import app
+from empax import evaluation
+import typing
 
 import numpy as np
 import sonnet as snt
@@ -34,10 +31,14 @@ def make_environment(envname: str = 'MiniGrid-Empty-8x8-v0') -> dm_env.Environme
 #network_function is one of the functions below, and generates all the networks for the model
 #environment is the environment, i.e. the output of make_environment
 #other_arguments are all the hyperparameters of the agent
-def make_environment_loop(network_function, environment: dm_env.Environment, **other_arguments)\
-        -> acme.EnvironmentLoop:
+def make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,
+                          environment: dm_env.Environment,
+                          eval_observer: evaluation.observers.EvaluationObserver,
+                          **other_arguments
+                          )\
+        -> (acme.EnvironmentLoop, acme.EnvironmentLoop):
+
     spec = specs.make_environment_spec(environment)
-    Qnet, qnet, featnet, rnet, feat_dims = network_function(spec.actions)
 
     agent = dqn.DQNEmpowerment(
         environment_spec=spec,
@@ -48,7 +49,14 @@ def make_environment_loop(network_function, environment: dm_env.Environment, **o
         rnetwork=rnet,
         **other_arguments)
     loop = acme.EnvironmentLoop(environment, agent)
-    return loop
+
+    eval_loop = acme.EnvironmentLoop(
+        environment,
+        actor=agent.eval_actor,
+        logger=acme.utils.loggers.TerminalLogger(print_fn=print),
+        observer=eval_observer,
+    )
+    return loop, eval_loop
 
 
 

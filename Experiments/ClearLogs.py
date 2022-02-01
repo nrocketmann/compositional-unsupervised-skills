@@ -16,7 +16,7 @@ if (os.getcwd()!="IntrinsicRewards"):
     os.chdir('..')
 
 MODELNUMS = [str(x) for x in MODELNUMS]
-fnames = os.listdir('../checkpoints/') #checkpoints are named just with the name and model
+fnames = os.listdir('../logging/checkpoints/') #checkpoints are named just with the name and model
 if not ALL:
     fnames = filter(lambda x: x.startswith(MODELNAME) and x[len(MODELNAME):] in MODELNUMS, fnames)
 
@@ -24,3 +24,4 @@ for fname in fnames:
     shutil.rmtree('checkpoints/' + fname)
     shutil.rmtree('logdir/' + fname)
     shutil.rmtree('metadata/' + fname + '.json')
+    shutil.rmtree('artifacts/' + fname)

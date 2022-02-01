@@ -11,9 +11,10 @@ from acme.utils import loggers
 import json
 import IntrinsicRewards.Experiments.helpers as helpers
 import wandb
+from empax import evaluation
+import IntrinsicRewards.Experiments.observers as observers
+from acme import specs
 
-
-#TODO: Add in observers
 
 
 """We will use the experimenter to run any experiment function
@@ -65,7 +66,7 @@ class Experimenter:
             args['checkpoint_subpath'] = checkpoint_path
 
             #metadata
-            writeable_args = {"name":self.name, "modelnum":modelnum}
+            writeable_args = {"modelname":self.name, "modelnum":modelnum}
             for k,v in args.items():
                 if helpers.is_jsonable(k) and helpers.is_jsonable(v):
                     writeable_args[k] = v
@@ -74,10 +75,11 @@ class Experimenter:
 
             #wandb logging
             tf_logdir = 'tflogs/' + self.name + str(modelnum)
-            run = wandb.init(project=self.wandb_project,entity=self.wandb_username, reinit=True)
+            run = wandb.init(project=self.wandb_project,entity=self.wandb_username, reinit=True,config=writeable_args)
             wandb.run.name = self.name + str(modelnum)
-            wandb.config = writeable_args
             args['tflogs'] = tf_logdir
+            args['modelname'] = self.name
+            args['modelnum'] = modelnum
             self.experiment_function(**args)
             run.finish()
 
@@ -100,10 +102,13 @@ class Arglist(list):
 
 
 def gridworld_empowerment_experiment(
+        modelname: str,
+        modelnum: int,
         envname: str,
         model_type: str,
-        num_episodes: Optional[int] = None,
-        num_steps: Optional[int] = None,
+        num_steps: int = None,
+        eval_every: int = 100,
+        num_eval_episodes: int = 5,
         **other_arguments
 ):
 
@@ -117,17 +122,39 @@ def gridworld_empowerment_experiment(
         raise TypeError("No network function associated with " + model_type + ". Valid network functions: " +
                         str(list(model_function_dict.keys())))
 
+
     #make environment
     environment = empowerment.make_environment(envname)
+    spec = specs.make_environment_spec(environment)
 
-    #make environment loop
-    environment_loop = empowerment.make_environment_loop(network_function,environment, **other_arguments)
+    #make networks
+    Qnet, qnet, featnet, rnet, feat_dims = network_function(spec.actions)
 
-    if num_episodes is not None:
-        environment_loop.run(num_episodes=num_episodes)
-    elif num_steps is not None:
-        environment_loop.run(num_steps=num_steps)
-    else:
-        raise TypeError("Either num_episodes or num_steps must not be None")
+    #make observer and logger for eval environment
+    eval_logger = loggers.CSVLogger('eval_logdir/' + modelname + str(modelnum))
+    eval_observer_metric = observers.EmpowermentGraph(rnet, featnet,other_arguments['beta'],spec.actions.num_values)
+    eval_observer = evaluation.observers.EvaluationObserver(
+        episode_metrics=[
+            eval_observer_metric,
+        ],
+        logger=eval_logger,
+        artifacts_path='artifacts/' + modelname + str(modelnum),
+    )
 
+    #make environment loops
+    environment_loop, eval_loop = empowerment.make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,environment, eval_observer, **other_arguments)
+
+    for i in range(num_steps//eval_every):
+        eval_observer.reset()
+
+        global_step = int(environment_loop._counter.get_counts()['steps'])
+        print(f"Evaluation: steps = {global_step}")
+
+        eval_metrics = evaluation.evaluate.run_eval_step(
+            eval_loop, global_step=global_step, num_episodes=num_eval_episodes)
+        eval_observer.write_results(eval_metrics, steps=global_step)
+        print("-" * 100)
+
+        # Train.
+        environment_loop.run(num_steps=eval_every)
     return

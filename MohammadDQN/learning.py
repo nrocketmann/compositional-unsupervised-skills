@@ -203,17 +203,6 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
       loss *= tf.cast(importance_weights, loss.dtype)  # [B]
       loss = tf.reduce_mean(loss, axis=[0])  # []
 
-      if self.tf_summary_writer is not None:
-        with self.tf_summary_writer.as_default():
-          tf.summary.scalar('loss_Q', loss)
-          tf.summary.scalar('loss_q', q_loss)
-          tf.summary.scalar('loss_r', r_loss)
-          tf.summary.scalar('loss_feat', feat_loss)
-          tf.summary.scalar('intrinsic_reward', tf.reduce_mean(intrinsic_reward))
-          tf.summary.scalar('mean_qval', tf.reduce_mean(q_t_value))
-        self.tf_summary_writer.flush()
-        wandb.tensorflow.log(tf.summary.merge_all())
-
     qgradients = tape.gradient(q_loss, self._qnetwork.trainable_variables)
     rgradients = tape.gradient(r_loss, self._rnetwork.trainable_variables)
     featgradients = tape.gradient(feat_loss, self._feat_network.trainable_variables)
@@ -276,6 +265,19 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
     # Update our counts and record it.
     counts = self._counter.increment(steps=1, walltime=elapsed_time)
     result.update(counts)
+
+    #WANDB LOGGING
+    tf_log_keys = ['loss_Q','loss_q','loss_r','loss_feat','intrinsic_reward','mean_qval']
+    # if self.tf_summary_writer is not None:
+    #   with self.tf_summary_writer.as_default():
+    #     step = counts['steps']
+    #     for key in tf_log_keys:
+    #       tf.summary.scalar(key,result[key],step)
+    #   self.tf_summary_writer.flush()
+    #   wandb.tensorflow.log(tf.contrib.summary.merge_all())
+
+    wandb_log_data = {k: result[k] for k in tf_log_keys}
+    wandb.log(wandb_log_data)
 
     # Snapshot and attempt to write logs.
     if self._snapshotter is not None:
