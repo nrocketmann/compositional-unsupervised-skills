@@ -106,7 +106,8 @@ def gridworld_empowerment_experiment(
         modelnum: int,
         envname: str,
         model_type: str,
-        num_steps: int = None,
+        sequence_length: int,
+        num_steps: int = 5,
         eval_every: int = 100,
         num_eval_episodes: int = 5,
         **other_arguments
@@ -132,7 +133,7 @@ def gridworld_empowerment_experiment(
 
     #make observer and logger for eval environment
     eval_logger = loggers.CSVLogger('eval_logdir/' + modelname + str(modelnum))
-    eval_observer_metric = observers.EmpowermentGraph(rnet, featnet,other_arguments['beta'],spec.actions.num_values)
+    eval_observer_metric = observers.EmpowermentGraph(rnet, featnet,other_arguments['beta'],spec.actions.num_values,sequence_length)
     eval_observer = evaluation.observers.EvaluationObserver(
         episode_metrics=[
             eval_observer_metric,
@@ -142,11 +143,14 @@ def gridworld_empowerment_experiment(
     )
 
     #make environment loops
-    environment_loop, eval_loop = empowerment.make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,environment, eval_observer, **other_arguments)
+    environment_loop, eval_loop = empowerment.make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,environment, eval_observer, sequence_length, **other_arguments)
 
     for i in range(num_steps//eval_every):
-        eval_observer.reset()
+        # Train.
+        environment_loop.run(num_steps=eval_every)
 
+        # eval
+        eval_observer.reset()
         global_step = int(environment_loop._counter.get_counts()['steps'])
         print(f"Evaluation: steps = {global_step}")
 
@@ -155,6 +159,5 @@ def gridworld_empowerment_experiment(
         eval_observer.write_results(eval_metrics, steps=global_step)
         print("-" * 100)
 
-        # Train.
-        environment_loop.run(num_steps=eval_every)
+
     return

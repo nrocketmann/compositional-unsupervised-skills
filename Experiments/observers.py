@@ -1,4 +1,4 @@
-"""Visualize Trajectory."""
+"""Visualize Trajectory and log intrinsic reward"""
 
 from typing import Dict
 
@@ -10,64 +10,107 @@ from empax import types
 from empax.evaluation import observers, plot_utils
 import sonnet as snt
 import tensorflow as tf
+from matplotlib import pyplot as plt
 
+"""This graphs the intrinsic reward of the agent in an eval loop.
+It also graphs where the agent spends its time.
+Meant for gym-minigrid environments right now
+"""
 class EmpowermentGraph(observers.EpisodeMetric):
 
   def __init__(self,
                r_network: snt.Module,
                feat_network: snt.Module,
                beta: float,
-               num_actions: int
+               num_actions: int,
+               sequence_length: int = 10
                ):
+    self.size = 25
+    self.size_set = False
     self.reset()
     self.feat_network = feat_network
     self.r_network = r_network
     self.beta = beta
     self.num_actions = num_actions
+    self.sequence_length = sequence_length
+    #just a handy array to figure out where the character is
+
+
 
   def reset(self):
-    self._trajectories = []
+    #trajectories will be a heatmap of where the agent spends its time
+    self._trajectories = np.zeros([self.size,self.size],dtype=np.float32)
+    #intrinsic rewards will be a heatmap of intrinsic reward at each location
+    self._intrinsic_rewards = np.zeros([self.size,self.size],dtype=np.float32)
+
 
   def compute_metric(self, trajectory: observers.Trajectory
                      ) -> Dict[str, types.Number]:  # yapf: disable
-    print(trajectory.observations)
-    print(trajectory.observations[0])
+    if not self.size_set:
+      self.size = trajectory.observations[0].shape[0]
+      self.size_set = True
+      self.reset()
 
-    state_feats = self.feat_network(np.asarray(trajectory.observations))
-    if (trajectory.actions.shape.rank==2):
-      actions = tf.one_hot(np.asarray(trajectory.actions),self.num_actions) #TODO: make this not fail in continuous 1D case
-    else:
-      actions = np.asarray(trajectory.actions)
+    trajectory_length = len(trajectory.observations) - self.sequence_length
+    if (trajectory_length<10):
+      print("Short trajectory!")
+      return {}
+    observations = np.asarray(trajectory.observations[:trajectory_length])
+    #shape should be 8 x 8 x 3
+    #place with character has values [10,0,0]
+
+    #update graph of trajectories based on where agent has been
+    # locations_traveled = np.linalg.norm(observations -
+    #                                     np.tile(self._character_map,[trajectory_length,1,1,1]),axis=-1)
+    #shape [num_trajectories, 8, 8]
+    #locations_traveled = np.where(locations_traveled>0,0,1) #shape [trajectory_length, 8, 8]
+    locations_traveled = np.where(observations[...,0] ==10, 1, 0)
+    locations_traveled_sum = np.sum(locations_traveled,axis=0)#shape [8,8]
+
+    #print(str(np.sum(locations_traveled_sum)/trajectory_length)) #should always be 1!
+    self._trajectories += locations_traveled_sum
+
+    state_feats = self.feat_network(observations)
+
+  #TODO: This only works for 1d discrete actions, probably should adjust it
+    #now we gotta get the actions lined up with states...
+    input_actions = list([trajectory.actions[i:i+self.sequence_length] for i in range(trajectory_length)])
+    actions = tf.one_hot(np.array(input_actions),self.num_actions)
+
+
     _, phi_val = self.r_network(actions, state_feats)
-    intrinsic_rewards = tf.squeeze(phi_val * 1 / self.beta)
+    intrinsic_rewards = tf.squeeze(phi_val * 1 / self.beta) #shape [trajectory_length]
 
-    self._trajectories.append((intrinsic_rewards)) #TODO: add place where agent is
+    #now we want to add this to the heatmap of intrinsic reward
+    self._intrinsic_rewards += tf.reduce_sum(tf.reshape(intrinsic_rewards, [trajectory_length, 1,1]) * locations_traveled,axis=0)
+
     return {}
 
-  def draw_plot(self, ax: Axes):
-    ax.set_aspect('equal')
+  def draw_plot(self,frequencies,mean_rewards, log_frequencies):
+    plt.figure()
+    plt.title("frequencies")
+    plt.imshow(frequencies,cmap='gray')
+    plt.figure()
+    plt.title("Log frequencies")
+    plt.imshow(log_frequencies,cmap='gray')
+    plt.figure()
+    plt.title("mean rewards")
+    plt.imshow(mean_rewards,cmap='gray')
+    plt.show()
 
-    # assign goal colors from the (continuous) goal vector
-    num_trajectories = len(self._trajectories)
-    goals = np.vstack([goal for _, _, goal in self._trajectories])
-    assert goals.shape[0] == num_trajectories
-    colors = plot_utils.get_option_colors(goals)
-
-    L = 20
-    for (xs, ys, color) in self._trajectories:
-      L = max(L, np.max(xs))
-      L = max(L, np.max(ys))
-    L = L * 1.2
-    ax.axis([-L, L, -L, L])
-
-    for (xs, ys, _), color in zip(self._trajectories, colors):
-      ax.plot(xs, ys, color, linewidth=0.7)
 
   def result(self) -> Dict[str, Figure]:
     """Aggregate the trajectories and draw in a single plot."""
+    frequencies = self._trajectories/np.max(self._trajectories)
+    log_frequencies = np.log(self._trajectories + 1)
+    log_frequencies = log_frequencies/np.max(log_frequencies)
+    mean_rewards = self._intrinsic_rewards/(self._trajectories + 1e-8)
+    mean_rewards = mean_rewards - np.min(mean_rewards)
+    mean_rewards = mean_rewards/np.max(mean_rewards)
+    self.draw_plot(frequencies,mean_rewards, log_frequencies)
     # fig = Figure()
     # ax: Axes = fig.add_subplot()  # type: ignore
     # self.draw_plot(ax)
     # return {"xy_trajectory": fig}
-    print(self._trajectories)
+    #print(self._trajectories)
     return {}

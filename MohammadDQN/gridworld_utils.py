@@ -12,13 +12,20 @@ import typing
 import numpy as np
 import sonnet as snt
 from gym_minigrid.wrappers import *
+from matplotlib import pyplot as plt
 
 
 def make_environment(envname: str = 'MiniGrid-Empty-8x8-v0') -> dm_env.Environment:
 
   environment = gym.make(envname)
+  environment.reset()
+  plt.figure()
+  plt.imshow(environment.render())
+  plt.show()
   environment = FullyObsWrapper(environment)  # Get full pixel observations
   environment = ImgObsWrapper(environment)  # Get rid of the 'mission' field
+
+
   """Creates an OpenAI Gym environment."""
 
   # Make sure the environment obeys the dm_env.Environment interface.
@@ -34,6 +41,7 @@ def make_environment(envname: str = 'MiniGrid-Empty-8x8-v0') -> dm_env.Environme
 def make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,
                           environment: dm_env.Environment,
                           eval_observer: evaluation.observers.EvaluationObserver,
+                          sequence_length: int,
                           **other_arguments
                           )\
         -> (acme.EnvironmentLoop, acme.EnvironmentLoop):
@@ -47,6 +55,7 @@ def make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,
         feat_network=featnet,
         feat_dims=feat_dims,
         rnetwork=rnet,
+        sequence_length=sequence_length,
         **other_arguments)
     loop = acme.EnvironmentLoop(environment, agent)
 
@@ -54,7 +63,7 @@ def make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,
         environment,
         actor=agent.eval_actor,
         logger=acme.utils.loggers.TerminalLogger(print_fn=print),
-        observer=eval_observer,
+        observers=[eval_observer],
     )
     return loop, eval_loop
 
