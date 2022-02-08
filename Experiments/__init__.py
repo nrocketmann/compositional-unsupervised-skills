@@ -1,2 +1,2 @@
 from IntrinsicRewards.Experiments.Experimenter import Experimenter, gridworld_empowerment_experiment
-from IntrinsicRewards.Experiments.RayExperimenter import RayExperimenter, ray_gridworld_empowerment_experiment
+from IntrinsicRewards.Experiments.RayExperimenter import RayExperimenter, EmpowermentTrainable

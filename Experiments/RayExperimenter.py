@@ -17,45 +17,9 @@ from acme import specs
 from matplotlib import pyplot as plt
 from ray import tune
 import ray
+from ray.tune.integration.wandb import wandb_mixin
+from ray.tune.integration.wandb import WandbLogger
 
-
-"""Ok, time to make a plan:
-Experimenter class governs a large set of experiments
-
-"""
-
-#helper function to set up logging for any ray tune boi
-#input config is a raytune config object
-def setup_logging_config(config):
-    print(config)
-    return {}
-
-    # trial_id = config['trial_id'] #TODO: actually get the trial id lol
-    #
-    # # logging
-    # logger = loggers.CSVLogger('logdir/' + config['name'] + trial_id)
-    #
-    # # checkpointing
-    # args['checkpoint'] = True
-    # checkpoint_path = 'checkpoints/' + self.name + str(modelnum)
-    # os.mkdir(checkpoint_path)
-    # args['checkpoint_subpath'] = checkpoint_path
-    #
-    # # metadata
-    # writeable_args = {"modelname": self.name, "modelnum": modelnum}
-    # for k, v in args.items():
-    #     if helpers.is_jsonable(k) and helpers.is_jsonable(v):
-    #         writeable_args[k] = v
-    #
-    # json.dump(writeable_args, open('metadata/' + self.name + str(modelnum) + '.json', 'w'))
-    #
-    # # wandb logging
-    # tf_logdir = 'tflogs/' + self.name + str(modelnum)
-    # run = wandb.init(project=self.wandb_project, entity=self.wandb_username, reinit=True, config=writeable_args)
-    # wandb.run.name = self.name + str(modelnum)
-    # args['tflogs'] = tf_logdir
-    # args['modelname'] = self.name
-    # args['modelnum'] = modelnum
 
 """We will use the experimenter to run any experiment function
 It should simply take in "args" (a RayTune dictionary) and
@@ -63,59 +27,73 @@ an experiment function, and run all the experiments while doing saving as necess
 class RayExperimenter:
     def __init__(self,
                  name, #a string saying what name this experiment has
-                 experiment_function,
+                 experiment_class,
                  args: dict, #arguments required for the experiment function, including "other_arguments"
                  wandb_project: str = "rl_skills",
                  wandb_username: str = "nrocketmann"
                  ):
-        self.experiment_function = experiment_function
+        self.experiment_class = experiment_class
         self.name = name
         self.args = args
         self.args['name'] = name
         self.wandb_project = wandb_project
         self.wandb_username = wandb_username
 
+        self.args["wandb"] = {
+            "project": "rl_skills",
+            "api_key_file": "~/wandb_api_key.txt",
+            "log_config": True
+        }
+
+
     #The public function that is called to run experiments
     def run_experiments(self):
         print("Running experiments!")
         #ray.init(local=True)
         analysis = tune.run(
-            self.experiment_function,
-            config=self.args)
+            self.experiment_class,
+            config=self.args,
+        loggers=(WandbLogger,))
+        return
 
 
 class Trainable(tune.Trainable):
-    def setup(self, config):
-        args = {}
+    def logging_setup(self, config):
+
+
+        os.chdir('/home/nameer/empowerment/IntrinsicRewards') #TODO: make this less dumb
+        #self.args is what we are actually going to pass to the model
+        self.name = config['name']
+        self.args = copy.deepcopy(config)
+
         # logging
-        logger = loggers.CSVLogger('logdir/' + config['name'] + self.trial_id)
+        logger = loggers.CSVLogger('logdir/' + self.name + self.trial_id)
         self.logger = logger
+        eval_logger = loggers.CSVLogger('eval_logdir/' + self.name + self.trial_id)
+        self.eval_logger = eval_logger
+
         # checkpointing
-        args['checkpoint'] = True
         checkpoint_path = 'checkpoints/' + self.name + self.trial_id
         os.mkdir(checkpoint_path)
-        args['checkpoint_subpath'] = checkpoint_path
+        self.args['checkpoint'] = True
+        self.args['checkpoint_subpath'] = checkpoint_path
 
         # metadata
-        writeable_args = {"modelname": self.name, "modelnum": modelnum}
-        for k, v in args.items():
+        writeable_args = {"modelname": self.name, "trial_id": self.trial_id}
+        for k, v in self.args.items():
             if helpers.is_jsonable(k) and helpers.is_jsonable(v):
                 writeable_args[k] = v
 
-        json.dump(writeable_args, open('metadata/' + self.name + str(modelnum) + '.json', 'w'))
+        json.dump(writeable_args, open('metadata/' + self.name + self.trial_id + '.json', 'w'))
 
         # wandb logging
-        tf_logdir = 'tflogs/' + self.name + str(modelnum)
-        run = wandb.init(project=self.wandb_project, entity=self.wandb_username, reinit=True, config=writeable_args)
-        wandb.run.name = self.name + str(modelnum)
-        args['tflogs'] = tf_logdir
-        args['modelname'] = self.name
-        args['modelnum'] = modelnum
+        self.tf_logdir = 'tflogs/' + self.name + self.trial_id
 
-    def step(self):  # This is called iteratively.
-        score = objective(self.x, self.a, self.b)
-        self.x += 1
-        return {"score": score}
+        #artifact logging
+        self.artifacts_path = 'logging/artifacts/' + self.name + self.trial_id
+        os.mkdir(self.artifacts_path)
+
+        del self.args['name']
 
 
 """Required arguments in config:
@@ -126,73 +104,81 @@ class Trainable(tune.Trainable):
         eval_every: int,
         num_eval_episodes: int,
 """
-def ray_gridworld_empowerment_experiment(
-        config: dict
-):
-    config = setup_logging_config(config)
-    modelname = config['name']
-    trial_id = config['trial_id']
-    envname = config['envname']
-    model_type = config['model_type']
-    sequence_length = config['sequence_length']
-    num_steps = config['num_steps']
-    eval_every = config['eval_every']
-    num_eval_episodes = config['num_eval_episodes']
-    return
+class EmpowermentTrainable(Trainable):
+    def setup(self, config):
+        self.logging_setup(config)
 
-    # First get the model function
-    model_function_dict = {
-        'simple': empowerment.make_networks_simple,
-    }
-    if model_type in model_function_dict:
-        network_function = model_function_dict[model_type]
-    else:
-        raise TypeError("No network function associated with " + model_type + ". Valid network functions: " +
-                        str(list(model_function_dict.keys())))
+        model_type = config['model_type']
+        envname = config['envname']
+        sequence_length = config['sequence_length']
+        beta = config['beta']
+        self.num_steps = config['num_steps']
+        self.eval_every = config['eval_every']
+        self.num_eval_episodes = config['num_eval_episodes']
 
-    artifacts_path = 'logging/artifacts/' + modelname + trial_id
-    os.mkdir(artifacts_path)
-    #make environment
-    environment = empowerment.make_environment(envname)
-    spec = specs.make_environment_spec(environment)
+        model_function_dict = {
+            'simple': empowerment.make_networks_simple,
+        }
 
-    #save plot of environment
-    plt.figure()
-    plt.imshow(environment.render())
-    plt.savefig(artifacts_path + '/environment.png')
-    plt.show()
+        #get model factory function
+        if model_type in model_function_dict:
+            network_function = model_function_dict[model_type]
+        else:
+            raise TypeError("No network function associated with " + model_type + ". Valid network functions: " +
+                            str(list(model_function_dict.keys())))
 
-    #make networks
-    Qnet, qnet, featnet, rnet, feat_dims = network_function(spec.actions)
+        #make environment
+        environment = empowerment.make_environment(envname)
+        spec = specs.make_environment_spec(environment)
 
-    #make observer and logger for eval environment
-    eval_logger = loggers.CSVLogger('eval_logdir/' + modelname + trial_id)
-    eval_observer_metric = observers.EmpowermentGraph(rnet, featnet,other_arguments['beta'],spec.actions.num_values,
-                                                      artifacts_path, sequence_length)
-    eval_observer = evaluation.observers.EvaluationObserver(
-        episode_metrics=[
-            eval_observer_metric,
-        ],
-        logger=eval_logger,
-        artifacts_path=artifacts_path,
-    )
+        #make networks
+        Qnet, qnet, featnet, rnet, feat_dims = network_function(spec.actions)
 
-    #make environment loops
-    environment_loop, eval_loop = empowerment.make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,environment, eval_observer, sequence_length, **other_arguments)
+        # make observer and logger for eval environment
+        eval_observer_metric = observers.EmpowermentGraph(rnet, featnet, beta,
+                                                          spec.actions.num_values,
+                                                          self.artifacts_path, sequence_length)
+        self.eval_observer = evaluation.observers.EvaluationObserver(
+            episode_metrics=[
+                eval_observer_metric,
+            ],
+            logger=self.eval_logger,
+            artifacts_path=self.artifacts_path,
+        )
 
-    for i in range(num_steps//eval_every):
+        del self.args['model_type']
+        del self.args['envname']
+        del self.args['sequence_length']
+        del self.args['beta']
+        del self.args['num_steps']
+        del self.args['eval_every']
+        del self.args['num_eval_episodes']
+        del self.args['wandb']
+
+
+        self.environment_loop, self.eval_loop = empowerment.make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,
+                                                                        environment, self.eval_observer, sequence_length,
+                                                                        **self.args)
+        self.num_iter = self.num_steps// self.eval_every
+        self.iteration_counter = 0
+    @wandb_mixin
+    def step(self):
         # Train.
-        environment_loop.run(num_steps=eval_every)
+        self.environment_loop.run(num_steps=self.eval_every)
 
         # eval
-        eval_observer.reset()
-        global_step = int(environment_loop._counter.get_counts()['steps'])
+        self.eval_observer.reset()
+        global_step = int(self.environment_loop._counter.get_counts()['steps'])
         print(f"Evaluation: steps = {global_step}")
 
         eval_metrics = evaluation.evaluate.run_eval_step(
-            eval_loop, global_step=global_step, num_episodes=num_eval_episodes)
-        eval_observer.write_results(eval_metrics, steps=global_step)
+            self.eval_loop, global_step=global_step, num_episodes=self.num_eval_episodes)
+        self.eval_observer.write_results(eval_metrics, steps=global_step)
         print("-" * 100)
+        self.iteration_counter+=1
 
-
-    return
+        if self.iteration_counter==self.num_iter:
+            eval_metrics["done"] = True
+        else:
+            eval_metrics["done"] = False
+        return eval_metrics
