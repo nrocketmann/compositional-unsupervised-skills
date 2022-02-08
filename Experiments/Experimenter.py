@@ -131,10 +131,10 @@ def gridworld_empowerment_experiment(
     spec = specs.make_environment_spec(environment)
 
     #save plot of environment
-    plt.figure()
-    plt.imshow(environment.render())
-    plt.savefig(artifacts_path + '/environment.png')
-    plt.show()
+    # plt.figure()
+    # plt.imshow(environment.render())
+    # plt.savefig(artifacts_path + '/environment.png')
+    # plt.show()
 
     #make networks
     Qnet, qnet, featnet, rnet, feat_dims = network_function(spec.actions)
@@ -149,6 +149,7 @@ def gridworld_empowerment_experiment(
         ],
         logger=eval_logger,
         artifacts_path=artifacts_path,
+        do_render = True
     )
 
     #make environment loops

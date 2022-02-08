@@ -13,6 +13,7 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 import os
 import wandb
+import cv2
 
 """This graphs the intrinsic reward of the agent in an eval loop.
 It also graphs where the agent spends its time.
@@ -47,6 +48,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
     self._trajectories = np.zeros([self.size,self.size],dtype=np.float32)
     #intrinsic rewards will be a heatmap of intrinsic reward at each location
     self._intrinsic_rewards = np.zeros([self.size,self.size],dtype=np.float32)
+    self.video_frames = None
 
 
   def compute_metric(self, trajectory: observers.Trajectory
@@ -56,6 +58,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
       self.size_set = True
       self.reset()
 
+    self.video_frames = trajectory.renders
     trajectory_length = len(trajectory.observations) - self.sequence_length
     if (trajectory_length<10):
       print("Short trajectory!")
@@ -72,7 +75,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
     locations_traveled = np.where(observations[...,0] ==10, 1, 0)
     locations_traveled_sum = np.sum(locations_traveled,axis=0)#shape [8,8]
 
-    #print(str(np.sum(locations_traveled_sum)/trajectory_length)) #should always be 1!
+    print(str(np.sum(locations_traveled_sum)/trajectory_length)) #should always be 1!
     self._trajectories += locations_traveled_sum
 
     state_feats = self.feat_network(observations)
@@ -92,25 +95,46 @@ class EmpowermentGraph(observers.EpisodeMetric):
     return {}
 
   def draw_plot(self,frequencies,mean_rewards, log_frequencies):
+    print("Drawing plots!")
     plt.figure()
     plt.title("frequencies")
     plt.imshow(frequencies,cmap='gray')
     plt.savefig(os.path.join(self.out_directory, 'frequencies' + str(self.counter) + '.jpg'))
+
     plt.figure()
     plt.title("Log frequencies")
     plt.imshow(log_frequencies,cmap='gray')
-    plt.figure()
     plt.savefig(os.path.join(self.out_directory, 'log_frequencies' + str(self.counter) + '.jpg'))
+
+    plt.figure()
     plt.title("mean rewards")
     plt.imshow(mean_rewards,cmap='gray')
     plt.savefig(os.path.join(self.out_directory, 'mean_rewards' + str(self.counter) + '.jpg'))
+
+    #save video frame
+    print(len(self.video_frames))
+    plt.figure()
+    plt.title('environment')
+    plt.imshow(self.video_frames[0])
+    plt.savefig(os.path.join(self.out_directory, 'env_image' + str(self.counter) + '.jpg'))
+
     plt.show()
+
+    #save actual video
+    # video = cv2.VideoWriter(os.path.join(self.out_directory, 'video.avi'), cv2.VideoWriter_fourcc(*'MJPG'), 4,self.video_frames[0].shape[:2])
+    # for frame in self.video_frames:
+    #   video.write(frame[:, :, ::-1].astype(np.uint8))
+    # video.release()
+
+
     self.counter+=1
 
     wandb.log({
       "frequency_graph": wandb.Image((np.expand_dims(frequencies,-1)*255).astype(int)),
       "log_frequency_graph":wandb.Image((np.expand_dims(log_frequencies,-1)*255).astype(int)),
-      "reward_graph":wandb.Image((np.expand_dims(mean_rewards,-1)*255).astype(int))
+      "reward_graph":wandb.Image((np.expand_dims(mean_rewards,-1)*255).astype(int)),
+      "environment_graph": wandb.Image(self.video_frames[0]),
+      "video": wandb.Video(np.transpose(np.asarray(self.video_frames),[0,3,1,2]), fps=4, format="gif")
     })
 
 

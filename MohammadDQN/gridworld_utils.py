@@ -7,6 +7,7 @@ from IntrinsicRewards.MohammadDQN.EnvWrappers import SinglePrecisionFloatWrapper
 import dm_env
 import gym
 from empax import evaluation
+import babyai
 import typing
 
 import numpy as np
@@ -19,9 +20,7 @@ def make_environment(envname: str = 'MiniGrid-Empty-8x8-v0') -> dm_env.Environme
 
   environment = gym.make(envname)
   environment.reset()
-  # plt.figure()
-  # plt.imshow(environment.render())
-  # plt.show()
+
   environment = FullyObsWrapper(environment)  # Get full pixel observations
   environment = ImgObsWrapper(environment)  # Get rid of the 'mission' field
 
