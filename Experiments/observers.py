@@ -11,6 +11,8 @@ from empax.evaluation import observers, plot_utils
 import sonnet as snt
 import tensorflow as tf
 from matplotlib import pyplot as plt
+import os
+import wandb
 
 """This graphs the intrinsic reward of the agent in an eval loop.
 It also graphs where the agent spends its time.
@@ -23,6 +25,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
                feat_network: snt.Module,
                beta: float,
                num_actions: int,
+               out_directory: str,
                sequence_length: int = 10
                ):
     self.size = 25
@@ -33,6 +36,8 @@ class EmpowermentGraph(observers.EpisodeMetric):
     self.beta = beta
     self.num_actions = num_actions
     self.sequence_length = sequence_length
+    self.out_directory = out_directory
+    self.counter = 0
     #just a handy array to figure out where the character is
 
 
@@ -90,13 +95,23 @@ class EmpowermentGraph(observers.EpisodeMetric):
     plt.figure()
     plt.title("frequencies")
     plt.imshow(frequencies,cmap='gray')
+    plt.savefig(os.path.join(self.out_directory, 'frequencies' + str(self.counter) + '.jpg'))
     plt.figure()
     plt.title("Log frequencies")
     plt.imshow(log_frequencies,cmap='gray')
     plt.figure()
+    plt.savefig(os.path.join(self.out_directory, 'log_frequencies' + str(self.counter) + '.jpg'))
     plt.title("mean rewards")
     plt.imshow(mean_rewards,cmap='gray')
+    plt.savefig(os.path.join(self.out_directory, 'mean_rewards' + str(self.counter) + '.jpg'))
     plt.show()
+    self.counter+=1
+
+    wandb.log({
+      "frequency_graph": wandb.Image((np.expand_dims(frequencies,-1)*255).astype(int)),
+      "log_frequency_graph":wandb.Image((np.expand_dims(log_frequencies,-1)*255).astype(int)),
+      "reward_graph":wandb.Image((np.expand_dims(mean_rewards,-1)*255).astype(int))
+    })
 
 
   def result(self) -> Dict[str, Figure]:

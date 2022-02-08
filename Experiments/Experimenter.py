@@ -14,6 +14,7 @@ import wandb
 from empax import evaluation
 import IntrinsicRewards.Experiments.observers as observers
 from acme import specs
+from matplotlib import pyplot as plt
 
 
 
@@ -123,23 +124,31 @@ def gridworld_empowerment_experiment(
         raise TypeError("No network function associated with " + model_type + ". Valid network functions: " +
                         str(list(model_function_dict.keys())))
 
-
+    artifacts_path = 'logging/artifacts/' + modelname + str(modelnum)
+    os.mkdir(artifacts_path)
     #make environment
     environment = empowerment.make_environment(envname)
     spec = specs.make_environment_spec(environment)
+
+    #save plot of environment
+    plt.figure()
+    plt.imshow(environment.render())
+    plt.savefig(artifacts_path + '/environment.png')
+    plt.show()
 
     #make networks
     Qnet, qnet, featnet, rnet, feat_dims = network_function(spec.actions)
 
     #make observer and logger for eval environment
     eval_logger = loggers.CSVLogger('eval_logdir/' + modelname + str(modelnum))
-    eval_observer_metric = observers.EmpowermentGraph(rnet, featnet,other_arguments['beta'],spec.actions.num_values,sequence_length)
+    eval_observer_metric = observers.EmpowermentGraph(rnet, featnet,other_arguments['beta'],spec.actions.num_values,
+                                                      artifacts_path, sequence_length)
     eval_observer = evaluation.observers.EvaluationObserver(
         episode_metrics=[
             eval_observer_metric,
         ],
         logger=eval_logger,
-        artifacts_path='artifacts/' + modelname + str(modelnum),
+        artifacts_path=artifacts_path,
     )
 
     #make environment loops
