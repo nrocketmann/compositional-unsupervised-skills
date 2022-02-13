@@ -14,11 +14,15 @@ import numpy as np
 import sonnet as snt
 from gym_minigrid.wrappers import *
 from matplotlib import pyplot as plt
+from babyai.levels.iclr19_levels import Level_GoToRedBallNoDists
 
 
 def make_environment(envname: str = 'MiniGrid-Empty-8x8-v0') -> dm_env.Environment:
 
-  environment = gym.make(envname)
+  if envname=='Level1':
+      environment = Level_GoToRedBallNoDists()
+  else:
+      environment = gym.make(envname)
   environment.reset()
 
   environment = FullyObsWrapper(environment)  # Get full pixel observations
@@ -80,7 +84,7 @@ def make_networks_simple(action_spec: specs.DiscreteArray):
         return dqn.ConditionalProductNetwork(output_dims=action_spec.num_values, categorical=True)
 
     def _make_feat_network(
-            action_spec: specs.DiscreteArray) -> snt.Module:  # lol this just makes features, so we'll just flatten for now
+            action_spec: specs.DiscreteArray) -> snt.Module:
         return snt.Sequential([snt.Conv2D(32, 4, 2), tf.nn.leaky_relu, snt.Conv2D(64, 4, 2), tf.nn.leaky_relu,
                                snt.Flatten(), snt.Linear(64)
                                ])

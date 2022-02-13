@@ -39,12 +39,15 @@ class RayExperimenter:
         self.wandb_project = wandb_project
         self.wandb_username = wandb_username
 
-        self.args["wandb"] = {
-            "project": "rl_skills",
-            "api_key_file": "~/wandb_api_key.txt",
-            "log_config": True
-        }
+        self.args['wandb_username']= wandb_username
+        self.args['wandb_project'] = wandb_project
 
+        #set environment variables
+        os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+        os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+        os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+        os.environ['RAY_DISABLE_MEMORY_MONITOR'] = '1'
 
     #The public function that is called to run experiments
     def run_experiments(self):
@@ -53,7 +56,7 @@ class RayExperimenter:
         analysis = tune.run(
             self.experiment_class,
             config=self.args,
-        loggers=(WandbLogger,))
+        resources_per_trial={'gpu': 1})
         return
 
 
@@ -88,12 +91,16 @@ class Trainable(tune.Trainable):
 
         # wandb logging
         self.tf_logdir = 'tflogs/' + self.name + self.trial_id
+        wandb.init(project=self.args['wandb_project'],entity=self.args['wandb_username'],config = writeable_args)
+        wandb.run.name = self.name + self.trial_id
 
         #artifact logging
         self.artifacts_path = 'logging/artifacts/' + self.name + self.trial_id
         os.mkdir(self.artifacts_path)
 
         del self.args['name']
+        del self.args['wandb_project']
+        del self.args['wandb_username']
 
 
 """Required arguments in config:
@@ -144,6 +151,7 @@ class EmpowermentTrainable(Trainable):
             ],
             logger=self.eval_logger,
             artifacts_path=self.artifacts_path,
+            do_render=True
         )
 
         del self.args['model_type']
@@ -153,7 +161,6 @@ class EmpowermentTrainable(Trainable):
         del self.args['num_steps']
         del self.args['eval_every']
         del self.args['num_eval_episodes']
-        del self.args['wandb']
 
 
         self.environment_loop, self.eval_loop = empowerment.make_environment_loop(Qnet, qnet, featnet, rnet, feat_dims,
@@ -161,7 +168,7 @@ class EmpowermentTrainable(Trainable):
                                                                         **self.args)
         self.num_iter = self.num_steps// self.eval_every
         self.iteration_counter = 0
-    @wandb_mixin
+
     def step(self):
         # Train.
         self.environment_loop.run(num_steps=self.eval_every)
@@ -182,3 +189,10 @@ class EmpowermentTrainable(Trainable):
         else:
             eval_metrics["done"] = False
         return eval_metrics
+
+#Environments:
+#1: room with one object you can interact with
+#2: multiple objects, can place object on/in other one
+#3: lots of composition with many objects that can interact
+
+#on this: FARM/vanilla + DADS, DQN + Mohammad

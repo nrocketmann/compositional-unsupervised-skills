@@ -75,7 +75,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
     locations_traveled = np.where(observations[...,0] ==10, 1, 0)
     locations_traveled_sum = np.sum(locations_traveled,axis=0)#shape [8,8]
 
-    print(str(np.sum(locations_traveled_sum)/trajectory_length)) #should always be 1!
+    print("Should be 1.0: " + str(np.sum(locations_traveled_sum)/trajectory_length)) #should always be 1!
     self._trajectories += locations_traveled_sum
 
     state_feats = self.feat_network(observations)
@@ -112,19 +112,12 @@ class EmpowermentGraph(observers.EpisodeMetric):
     plt.savefig(os.path.join(self.out_directory, 'mean_rewards' + str(self.counter) + '.jpg'))
 
     #save video frame
-    print(len(self.video_frames))
     plt.figure()
     plt.title('environment')
-    plt.imshow(self.video_frames[0])
+    plt.imshow(np.transpose(self.video_frames[0],[1,0,2]))
     plt.savefig(os.path.join(self.out_directory, 'env_image' + str(self.counter) + '.jpg'))
 
     plt.show()
-
-    #save actual video
-    # video = cv2.VideoWriter(os.path.join(self.out_directory, 'video.avi'), cv2.VideoWriter_fourcc(*'MJPG'), 4,self.video_frames[0].shape[:2])
-    # for frame in self.video_frames:
-    #   video.write(frame[:, :, ::-1].astype(np.uint8))
-    # video.release()
 
 
     self.counter+=1
@@ -133,8 +126,8 @@ class EmpowermentGraph(observers.EpisodeMetric):
       "frequency_graph": wandb.Image((np.expand_dims(frequencies,-1)*255).astype(int)),
       "log_frequency_graph":wandb.Image((np.expand_dims(log_frequencies,-1)*255).astype(int)),
       "reward_graph":wandb.Image((np.expand_dims(mean_rewards,-1)*255).astype(int)),
-      "environment_graph": wandb.Image(self.video_frames[0]),
-      "video": wandb.Video(np.transpose(np.asarray(self.video_frames),[0,3,1,2]), fps=4, format="gif")
+      "environment_graph": wandb.Image(np.transpose(self.video_frames[0],[1,0,2])),
+      "video": wandb.Video(np.transpose(np.asarray(self.video_frames),[0,3,2,1]), fps=4, format="gif")
     })
 
 
@@ -143,13 +136,8 @@ class EmpowermentGraph(observers.EpisodeMetric):
     frequencies = self._trajectories/np.max(self._trajectories)
     log_frequencies = np.log(self._trajectories + 1)
     log_frequencies = log_frequencies/np.max(log_frequencies)
-    mean_rewards = self._intrinsic_rewards/(self._trajectories + 1e-8)
+    mean_rewards = self._intrinsic_rewards/(self._trajectories + 1e-7)
     mean_rewards = mean_rewards - np.min(mean_rewards)
     mean_rewards = mean_rewards/np.max(mean_rewards)
     self.draw_plot(frequencies,mean_rewards, log_frequencies)
-    # fig = Figure()
-    # ax: Axes = fig.add_subplot()  # type: ignore
-    # self.draw_plot(ax)
-    # return {"xy_trajectory": fig}
-    #print(self._trajectories)
     return {}
