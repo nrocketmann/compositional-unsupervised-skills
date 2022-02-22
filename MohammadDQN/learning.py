@@ -146,7 +146,7 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
     # This is to avoid including the time it takes for actors to come online and
     # fill the replay buffer.
     self._timestamp = None
-  #TODO: implement step
+
   @tf.function
   def _step(self) -> Dict[str, tf.Tensor]:
     """Do a step of SGD and update the priorities."""
@@ -162,12 +162,15 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
     else:
       action = transitions.action
 
+    print(transitions.action.shape)
+    print(transitions.observation.shape)
+    print(transitions.discount.shape)
 
 
     with tf.GradientTape(persistent=True) as tape:
-      q_tm1 = self._Qnetwork(transitions.observation[:,0])
-      q_t_value = self._target_Qnetwork(transitions.observation[:,1]) #next observation
-      q_t_selector = self._Qnetwork(transitions.observation[:,1]) #next observation
+      q_tm1 = self._Qnetwork(transitions.observation[:,-2])
+      q_t_value = self._target_Qnetwork(transitions.observation[:,-1]) #next observation
+      q_t_selector = self._Qnetwork(transitions.observation[:,-1]) #next observation
 
       feature_s = self._feat_network(transitions.observation[:,0])
       feature_sprime = self._feat_network(transitions.observation[:,-1])
@@ -177,20 +180,30 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
       r_preds, phi_val = self._rnetwork(action, feature_s)
 
       intrinsic_reward = tf.squeeze(phi_val * 1/self.beta)
-      #tf.print(intrinsic_reward)
+
+      tf.debugging.check_numerics(intrinsic_reward,'intrinsic_reward')
+      tf.debugging.check_numerics(q_preds,'q_preds')
+      tf.debugging.check_numerics(phi_val,'phi_val')
+      tf.debugging.check_numerics(r_preds,'r_preds')
 
       q_loss = -tf.reduce_mean(q_preds)
       r_loss = tf.reduce_mean(tf.math.squared_difference(self.beta * q_preds, r_preds))
       feat_loss = r_loss + q_loss
 
+      #check for numerical issues
+      tf.debugging.check_numerics(feat_loss,'feat_loss')
+      tf.debugging.check_numerics(r_loss,'r_los')
+      tf.debugging.check_numerics(q_loss,'q_loss')
+
       # The rewards and discounts have to have the same type as network values.
-      r_t = tf.cast(intrinsic_reward, q_tm1.dtype)
-      r_t = tf.clip_by_value(r_t, -1., 1.)
-      d_t = tf.cast(transitions.discount[:,0], q_tm1.dtype) * tf.cast(
+      #r_t = tf.cast(intrinsic_reward, q_tm1.dtype)
+      r_t = tf.cast(intrinsic_reward, q_tm1.dtype) * 0.0 + transitions.reward[:,-2] * 1.0
+
+      d_t = tf.cast(transitions.discount[:,-2], q_tm1.dtype) * tf.cast(
           self._discount, q_tm1.dtype)
 
       # Compute the loss.
-      _, extra = trfl.double_qlearning(q_tm1, tf.squeeze(transitions.action[:,0]), r_t, d_t,
+      _, extra = trfl.double_qlearning(q_tm1, tf.squeeze(transitions.action[:,-2]), r_t, d_t,
                                        q_t_value, q_t_selector)
       loss = losses.huber(extra.td_error, self._huber_loss_parameter)
 
@@ -211,6 +224,7 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
     gradients = tape.gradient(loss, self._Qnetwork.trainable_variables)
     gradients, _ = tf.clip_by_global_norm(gradients, self._max_gradient_norm)
     self._optimizerQ.apply(gradients, self._Qnetwork.trainable_variables)
+    Qgradient_norm = tf.linalg.global_norm(gradients)
 
     qgradients, _ = tf.clip_by_global_norm(qgradients, self._max_gradient_norm)
     rgradients, _ = tf.clip_by_global_norm(rgradients, self._max_gradient_norm)
@@ -237,8 +251,9 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
         'loss_feat': feat_loss,
         'keys': keys,
         'priorities': priorities,
-        'intrinsic_reward': tf.reduce_mean(intrinsic_reward),
-        'mean_qval': tf.reduce_mean(q_t_value)
+        'intrinsic_reward': tf.reduce_mean(r_t),
+        'mean_Qval': tf.reduce_mean(q_t_value),
+        'Qgradient_norm': Qgradient_norm
     }
 
     return fetches
@@ -246,6 +261,8 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
   def step(self):
     # Do a batch of SGD.
     result = self._step()
+    # if (result['intrinsic_reward'].numpy()!=0):
+    #   print(result['intrinsic_reward'].numpy())
 
     # Get the keys and priorities.
     keys = result.pop('keys')
@@ -267,14 +284,7 @@ class DQNEmpowermentLearner(acme.Learner, tf2_savers.TFSaveable):
     result.update(counts)
 
     #WANDB LOGGING
-    tf_log_keys = ['loss_Q','loss_q','loss_r','loss_feat','intrinsic_reward','mean_qval']
-    # if self.tf_summary_writer is not None:
-    #   with self.tf_summary_writer.as_default():
-    #     step = counts['steps']
-    #     for key in tf_log_keys:
-    #       tf.summary.scalar(key,result[key],step)
-    #   self.tf_summary_writer.flush()
-    #   wandb.tensorflow.log(tf.contrib.summary.merge_all())
+    tf_log_keys = ['loss_Q','loss_q','loss_r','loss_feat','intrinsic_reward','mean_Qval','Qgradient_norm']
 
     wandb_log_data = {k: result[k] for k in tf_log_keys}
     wandb.log(wandb_log_data)

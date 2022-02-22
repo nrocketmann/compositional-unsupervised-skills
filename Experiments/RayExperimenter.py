@@ -30,7 +30,8 @@ class RayExperimenter:
                  experiment_class,
                  args: dict, #arguments required for the experiment function, including "other_arguments"
                  wandb_project: str = "rl_skills",
-                 wandb_username: str = "nrocketmann"
+                 wandb_username: str = "nrocketmann",
+                 local_mode: bool = False
                  ):
         self.experiment_class = experiment_class
         self.name = name
@@ -38,6 +39,7 @@ class RayExperimenter:
         self.args['name'] = name
         self.wandb_project = wandb_project
         self.wandb_username = wandb_username
+        self.local_mode = local_mode
 
         self.args['wandb_username']= wandb_username
         self.args['wandb_project'] = wandb_project
@@ -52,7 +54,8 @@ class RayExperimenter:
     #The public function that is called to run experiments
     def run_experiments(self):
         print("Running experiments!")
-        #ray.init(local=True)
+        if self.local_mode:
+            ray.init(local_mode=True)
         analysis = tune.run(
             self.experiment_class,
             config=self.args,
@@ -70,13 +73,13 @@ class Trainable(tune.Trainable):
         self.args = copy.deepcopy(config)
 
         # logging
-        logger = loggers.CSVLogger('logdir/' + self.name + self.trial_id)
+        logger = loggers.CSVLogger('logging/logdir/' + self.name + self.trial_id)
         self.logger = logger
-        eval_logger = loggers.CSVLogger('eval_logdir/' + self.name + self.trial_id)
+        eval_logger = loggers.CSVLogger('logging/eval_logdir/' + self.name + self.trial_id)
         self.eval_logger = eval_logger
 
         # checkpointing
-        checkpoint_path = 'checkpoints/' + self.name + self.trial_id
+        checkpoint_path = 'logging/checkpoints/' + self.name + self.trial_id
         os.mkdir(checkpoint_path)
         self.args['checkpoint'] = True
         self.args['checkpoint_subpath'] = checkpoint_path
@@ -87,10 +90,10 @@ class Trainable(tune.Trainable):
             if helpers.is_jsonable(k) and helpers.is_jsonable(v):
                 writeable_args[k] = v
 
-        json.dump(writeable_args, open('metadata/' + self.name + self.trial_id + '.json', 'w'))
+        json.dump(writeable_args, open('logging/metadata/' + self.name + self.trial_id + '.json', 'w'))
 
         # wandb logging
-        self.tf_logdir = 'tflogs/' + self.name + self.trial_id
+        self.tf_logdir = 'logging/tflogs/' + self.name + self.trial_id
         wandb.init(project=self.args['wandb_project'],entity=self.args['wandb_username'],config = writeable_args)
         wandb.run.name = self.name + self.trial_id
 

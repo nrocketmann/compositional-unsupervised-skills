@@ -21,6 +21,7 @@ class SinglePrecisionFloatWrapper(base.EnvironmentWrapper):
         observation=_convert_value(timestep.observation,force_float=True))
 
   def step(self, action) -> dm_env.TimeStep:
+
     return self._convert_timestep(self._environment.step(action))
 
   def reset(self) -> dm_env.TimeStep:
@@ -73,7 +74,8 @@ def _convert_value(nested_value: types.Nest, force_float: bool = False) -> types
             value = np.array(value, copy=False, dtype=np.float32)
           elif np.issubdtype(value.dtype, np.int64):
             value = np.array(value, copy=False, dtype=np.int32)
-
+      if np.issubdtype(value.dtype, np.float32):
+        value = (value / 10.0).astype(np.float32)  # Normalize if float
     return value
 
 

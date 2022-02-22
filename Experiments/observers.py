@@ -72,7 +72,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
     #                                     np.tile(self._character_map,[trajectory_length,1,1,1]),axis=-1)
     #shape [num_trajectories, 8, 8]
     #locations_traveled = np.where(locations_traveled>0,0,1) #shape [trajectory_length, 8, 8]
-    locations_traveled = np.where(observations[...,0] ==10, 1, 0)
+    locations_traveled = np.where(observations[...,0] ==1.0, 1, 0)
     locations_traveled_sum = np.sum(locations_traveled,axis=0)#shape [8,8]
 
     print("Should be 1.0: " + str(np.sum(locations_traveled_sum)/trajectory_length)) #should always be 1!
@@ -109,6 +109,7 @@ class EmpowermentGraph(observers.EpisodeMetric):
     plt.figure()
     plt.title("mean rewards")
     plt.imshow(mean_rewards,cmap='gray')
+    print("Nans appearing in reward? " + str(np.any(np.isnan(mean_rewards))))
     plt.savefig(os.path.join(self.out_directory, 'mean_rewards' + str(self.counter) + '.jpg'))
 
     #save video frame

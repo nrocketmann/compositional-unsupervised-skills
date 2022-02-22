@@ -58,11 +58,11 @@ class Experimenter:
             modelnum = self.get_modelnum()
 
             #logging
-            args['logger'] = loggers.CSVLogger('logdir/' + self.name + str(modelnum))
+            args['logger'] = loggers.CSVLogger('logging/logdir/' + self.name + str(modelnum))
 
             #checkpointing
             args['checkpoint'] = True
-            checkpoint_path = 'checkpoints/' + self.name + str(modelnum)
+            checkpoint_path = 'logging/checkpoints/' + self.name + str(modelnum)
             os.mkdir(checkpoint_path)
             args['checkpoint_subpath'] = checkpoint_path
 
@@ -72,7 +72,7 @@ class Experimenter:
                 if helpers.is_jsonable(k) and helpers.is_jsonable(v):
                     writeable_args[k] = v
 
-            json.dump(writeable_args, open('metadata/' + self.name + str(modelnum) + '.json','w'))
+            json.dump(writeable_args, open('logging/metadata/' + self.name + str(modelnum) + '.json','w'))
 
             #wandb logging
             tf_logdir = 'tflogs/' + self.name + str(modelnum)
@@ -93,7 +93,7 @@ class Experimenter:
     #Each model with the same name is assigned a number one greater than the last one
     #Logs are saved as [MODELNAME][NUMBER].csv in logdir
     def get_modelnum(self):
-        existing_logs = list(filter(lambda x: x.startswith(self.name), os.listdir("logdir/")))
+        existing_logs = list(filter(lambda x: x.startswith(self.name), os.listdir("logging/logdir/")))
         return len(existing_logs)
 
 
